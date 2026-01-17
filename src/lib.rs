@@ -11,12 +11,21 @@ mod fees;
 
 #[wasm_bindgen]
 pub fn generate_wif(mainnet: bool) -> String {
-    keys::generate_wif(if mainnet { Network::Mainnet } else { Network::Testnet })
+    keys::generate_wif(if mainnet {
+        Network::Mainnet
+    } else {
+        Network::Testnet
+    })
 }
 
 #[wasm_bindgen]
 pub fn wif_to_address(wif: &str, mainnet: bool) -> String {
-    let net = if mainnet { Network::Mainnet } else { Network::Testnet };
+    let net = if mainnet {
+        Network::Mainnet
+    } else {
+        Network::Testnet
+    };
+
     let privkey = keys::wif_to_privkey(wif, net);
     let pubkey = keys::privkey_to_pubkey(&privkey);
     address::pubkey_to_address(&pubkey, net)
@@ -24,39 +33,66 @@ pub fn wif_to_address(wif: &str, mainnet: bool) -> String {
 
 #[wasm_bindgen]
 pub fn pubkey_to_bech32_wasm(wif: &str, mainnet: bool) -> String {
-    let net = if mainnet { Network::Mainnet } else { Network::Testnet };
+    let net = if mainnet {
+        Network::Mainnet
+    } else {
+        Network::Testnet
+    };
+
     let privkey = keys::wif_to_privkey(wif, net);
     let pubkey = keys::privkey_to_pubkey(&privkey);
-
     address::pubkey_to_bech32(&pubkey, net.bech32_hrp())
 }
 
 #[wasm_bindgen]
 pub fn validate_address(addr: &str, mainnet: bool) -> bool {
-    address::validate_address(addr, if mainnet { Network::Mainnet } else { Network::Testnet })
+    address::validate_address(
+        addr,
+        if mainnet {
+            Network::Mainnet
+        } else {
+            Network::Testnet
+        },
+    )
 }
 
-/// Legacy fee estimator: by input type
+/// ----------------------------------------------------------------------
+/// TRUE WEIGHT / VBYTES FEE ESTIMATION (AUTO-DETECTED)
+/// ----------------------------------------------------------------------
 #[wasm_bindgen]
 pub fn estimate_fee_wasm(
-    inputs: usize,
-    outputs: usize,
+    input_scripts_json: &str,
+    output_scripts_json: &str,
     sat_per_byte: u64,
-    input_type: &str
 ) -> u64 {
-    fees::estimate_fee(inputs, outputs, sat_per_byte, input_type)
+    let input_scripts: Vec<String> =
+        serde_json::from_str(input_scripts_json).expect("invalid input scripts JSON");
+
+    let output_scripts: Vec<String> =
+        serde_json::from_str(output_scripts_json).expect("invalid output scripts JSON");
+
+    fees::estimate_fee(&input_scripts, &output_scripts, sat_per_byte)
 }
 
-/// Auto-detect input types from UTXOs JSON and compute true fee (vbytes)
+/// ----------------------------------------------------------------------
+/// FEE ESTIMATION DIRECTLY FROM UTXOS JSON
+/// ----------------------------------------------------------------------
 #[wasm_bindgen]
 pub fn estimate_fee_from_utxos_wasm(
     utxos_json: &str,
-    outputs: usize,
-    sat_per_byte: u64
+    output_scripts_json: &str,
+    sat_per_byte: u64,
 ) -> u64 {
-    let utxos: Vec<tx::UTXO> = serde_json::from_str(utxos_json).expect("invalid UTXO JSON");
+    let utxos: Vec<tx::UTXO> =
+        serde_json::from_str(utxos_json).expect("invalid UTXO JSON");
 
-    fees::estimate_fee_from_utxos(&utxos, outputs, sat_per_byte)
+    let input_scripts: Vec<String> =
+        utxos.iter().map(|u| u.scriptPubKey.clone()).collect();
+
+    let output_scripts: Vec<String> =
+        serde_json::from_str(output_scripts_json).expect("invalid output scripts JSON");
+
+    fees::estimate_fee(&input_scripts, &output_scripts, sat_per_byte)
 }
 
 #[wasm_bindgen]
@@ -66,7 +102,7 @@ pub fn create_signed_tx(
     amount: u64,
     fee: u64,
     wif: &str,
-    mainnet: bool
+    mainnet: bool,
 ) -> String {
     tx::create_and_sign(utxos_json, to_address, amount, fee, wif, mainnet)
 }

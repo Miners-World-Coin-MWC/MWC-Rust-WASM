@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use secp256k1::{Secp256k1, Message, PublicKey};
+use secp256k1::{Secp256k1, Message};
 use crate::{crypto, utils, keys, address, network::Network};
 use bech32::{self, ToBase32};
 
@@ -7,30 +7,31 @@ use bech32::{self, ToBase32};
 pub struct UTXO {
     pub txid: String,
     pub vout: u32,
-    pub scriptPubKey: String, // hex
+    pub scriptPubKey: String,
     pub amount: u64,
-    pub is_segwit: bool,      // optional hint; can be auto-detected
 }
 
-// ---- helpers ----
+/* ---------------------------------------------------------------- */
+/* Script detection                                                  */
+/* ---------------------------------------------------------------- */
 
-fn p2wpkh_script(hash160: &[u8]) -> Vec<u8> {
-    let mut v = Vec::with_capacity(22);
-    v.push(0x00); // OP_0
-    v.push(0x14); // push 20 bytes
-    v.extend(hash160);
-    v
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum InputType {
+    P2PKH,
+    P2WPKH,
 }
 
-// Detect input type from scriptPubKey
-pub fn detect_input_type(script_pubkey: &[u8]) -> &'static str {
-    match script_pubkey {
-        [0x00, 0x14, ..] => "p2wpkh", // v0 witness
-        [0xa9, 0x14, ..] => "p2sh",
-        [0x76, 0xa9, 0x14, ..] => "p2pkh",
-        _ => "unknown",
+fn detect_input_type(script: &[u8]) -> InputType {
+    match script {
+        [0x00, 0x14, ..] => InputType::P2WPKH,
+        [0x76, 0xa9, 0x14, .., 0x88, 0xac] => InputType::P2PKH,
+        _ => InputType::P2PKH,
     }
 }
+
+/* ---------------------------------------------------------------- */
+/* Main tx builder                                                   */
+/* ---------------------------------------------------------------- */
 
 pub fn create_and_sign(
     utxos_json: &str,
@@ -43,122 +44,126 @@ pub fn create_and_sign(
     let network = if mainnet { Network::Mainnet } else { Network::Testnet };
     let secp = Secp256k1::new();
 
-    let utxos: Vec<UTXO> = serde_json::from_str(utxos_json)
-        .expect("invalid UTXO JSON");
+    let utxos: Vec<UTXO> = serde_json::from_str(utxos_json).expect("invalid UTXO JSON");
 
     let total_in: u64 = utxos.iter().map(|u| u.amount).sum();
     assert!(total_in >= amount + fee, "insufficient funds");
 
     let change = total_in - amount - fee;
+
     let privkey = keys::wif_to_privkey(wif, network);
     let pubkey = keys::privkey_to_pubkey(&privkey);
+    let pubkey_bytes = pubkey.serialize().to_vec();
 
-    // -------- outputs --------
+    let has_segwit = utxos.iter().any(|u| {
+        detect_input_type(&utils::hex_to_bytes(&u.scriptPubKey)) == InputType::P2WPKH
+    });
+
+    /* ---------------- outputs ---------------- */
+
     let mut outputs = Vec::new();
-    let mut output_count = 0;
+    let mut output_count = 1;
 
-    let to_script = if to_address.starts_with(network.bech32_hrp()) {
-        let (_hrp, data, _) = bech32::decode(to_address).expect("invalid bech32");
-        let (ver, prog) = data.split_first().expect("invalid witness");
-        assert!(ver.to_u8() == 0);
-        let prog = Vec::from_base32(prog).expect("invalid bech32 data");
-        p2wpkh_script(&prog)
-    } else {
-        address::address_to_scriptpubkey(to_address, network)
-    };
-
+    let to_script = address::address_to_scriptpubkey(to_address, network);
     outputs.extend(utils::u64_le(amount));
     outputs.extend(utils::varint(to_script.len()));
     outputs.extend(to_script);
-    output_count += 1;
 
-    // change output (legacy P2PKH)
     if change > 0 {
-        let change_script = address::pubkey_to_scriptpubkey(&pubkey, network);
+        let change_script = address::pubkey_to_address(&pubkey, network);
+        let change_script = address::address_to_scriptpubkey(&change_script, network);
         outputs.extend(utils::u64_le(change));
         outputs.extend(utils::varint(change_script.len()));
         outputs.extend(change_script);
         output_count += 1;
     }
 
-    // -------- transaction header --------
-    let has_segwit = utxos.iter().any(|u| u.is_segwit || detect_input_type(&utils::hex_to_bytes(&u.scriptPubKey)) == "p2wpkh");
+    /* ---------------- tx header ---------------- */
+
     let mut tx = Vec::new();
-    tx.extend(utils::u32_le(1)); // version
+    tx.extend(utils::u32_le(1));
 
     if has_segwit {
-        tx.push(0x00); // marker
-        tx.push(0x01); // flag
+        tx.extend([0x00, 0x01]);
     }
 
     tx.extend(utils::varint(utxos.len()));
 
-    let mut witness: Vec<Vec<Vec<u8>>> = vec![vec![]; utxos.len()];
+    let mut witnesses: Vec<Vec<Vec<u8>>> = vec![vec![]; utxos.len()];
 
-    // -------- inputs --------
+    /* ---------------- inputs ---------------- */
+
     for (i, utxo) in utxos.iter().enumerate() {
-        let script_bytes = utils::hex_to_bytes(&utxo.scriptPubKey);
-        let input_type = detect_input_type(&script_bytes);
+        let script = utils::hex_to_bytes(&utxo.scriptPubKey);
+        let input_type = detect_input_type(&script);
 
         tx.extend(utils::hex_to_bytes(&utxo.txid).into_iter().rev());
         tx.extend(utils::u32_le(utxo.vout));
 
-        if input_type == "p2wpkh" {
-            tx.push(0x00); // empty scriptSig
-            tx.extend(utils::u32_le(0xffffffff));
+        match input_type {
+            InputType::P2WPKH => {
+                tx.push(0x00);
+                tx.extend(utils::u32_le(0xffffffff));
 
-            // BIP143 sighash
-            let mut hash_prevouts = Vec::new();
-            let mut hash_sequence = Vec::new();
-            for u in &utxos {
-                hash_prevouts.extend(utils::hex_to_bytes(&u.txid).into_iter().rev());
-                hash_prevouts.extend(utils::u32_le(u.vout));
-                hash_sequence.extend(utils::u32_le(0xffffffff));
+                let pubkey_hash = &script[2..22];
+                let script_code = address::p2pkh_script(pubkey_hash);
+
+                let sighash = crypto::bip143_sighash(
+                    &utxos,
+                    i,
+                    &script_code,
+                    utxo.amount,
+                    &outputs,
+                );
+
+                let sig = secp.sign_ecdsa(
+                    &Message::from_slice(&sighash).unwrap(),
+                    &privkey,
+                );
+
+                let mut sig_der = sig.serialize_der().to_vec();
+                sig_der.push(0x01);
+
+                witnesses[i] = vec![sig_der, pubkey_bytes.clone()];
             }
 
-            let hash_prevouts = crypto::double_sha256(&hash_prevouts);
-            let hash_sequence = crypto::double_sha256(&hash_sequence);
+            InputType::P2PKH => {
+                let sighash = crypto::legacy_sighash(
+                    &utxos,
+                    i,
+                    &outputs,
+                );
 
-            let pubkey_hash = &script_bytes[2..22];
-            let script_code = address::p2pkh_script(pubkey_hash);
+                let sig = secp.sign_ecdsa(
+                    &Message::from_slice(&sighash).unwrap(),
+                    &privkey,
+                );
 
-            let mut sighash = Vec::new();
-            sighash.extend(utils::u32_le(1));
-            sighash.extend(&hash_prevouts);
-            sighash.extend(&hash_sequence);
-            sighash.extend(utils::hex_to_bytes(&utxo.txid).into_iter().rev());
-            sighash.extend(utils::u32_le(utxo.vout));
-            sighash.extend(utils::varint(script_code.len()));
-            sighash.extend(script_code);
-            sighash.extend(utils::u64_le(utxo.amount));
-            sighash.extend(utils::u32_le(0xffffffff));
-            sighash.extend(utils::varint(output_count));
-            sighash.extend(&outputs);
-            sighash.extend(utils::u32_le(0));
-            sighash.extend(utils::u32_le(1));
+                let mut sig_der = sig.serialize_der().to_vec();
+                sig_der.push(0x01);
 
-            let hash = crypto::double_sha256(&sighash);
-            let msg = Message::from_slice(&hash).unwrap();
-            let sig = secp.sign_ecdsa(&msg, &privkey);
+                let mut script_sig = Vec::new();
+                script_sig.extend(utils::varint(sig_der.len()));
+                script_sig.extend(sig_der);
+                script_sig.extend(utils::varint(pubkey_bytes.len()));
+                script_sig.extend(pubkey_bytes.clone());
 
-            let mut sig_der = sig.serialize_der().to_vec();
-            sig_der.push(0x01);
-
-            witness[i] = vec![sig_der, pubkey.serialize().to_vec()];
-        } else {
-            // legacy P2PKH
-            tx.push(0x00);
-            tx.extend(utils::u32_le(0xffffffff));
+                tx.extend(utils::varint(script_sig.len()));
+                tx.extend(script_sig);
+                tx.extend(utils::u32_le(0xffffffff));
+            }
         }
     }
 
-    // -------- outputs --------
+    /* ---------------- outputs ---------------- */
+
     tx.extend(utils::varint(output_count));
     tx.extend(&outputs);
 
-    // -------- witness --------
+    /* ---------------- witness ---------------- */
+
     if has_segwit {
-        for w in witness {
+        for w in witnesses {
             tx.extend(utils::varint(w.len()));
             for item in w {
                 tx.extend(utils::varint(item.len()));
@@ -167,37 +172,7 @@ pub fn create_and_sign(
         }
     }
 
-    tx.extend(utils::u32_le(0)); // locktime
+    tx.extend(utils::u32_le(0));
 
     utils::bytes_to_hex(&tx)
-}
-
-// -------- helper: build PSBT skeleton --------
-pub fn create_psbt_skeleton(utxos_json: &str, to_address: &str, amount: u64, fee: u64, mainnet: bool) -> Vec<u8> {
-    let network = if mainnet { Network::Mainnet } else { Network::Testnet };
-    let utxos: Vec<UTXO> = serde_json::from_str(utxos_json).unwrap();
-    let mut psbt: Vec<u8> = Vec::new();
-
-    // PSBT magic
-    psbt.extend(b"psbt\xff");
-
-    // global map placeholder
-    // inputs/outputs will be added by external signer
-    for _ in &utxos {
-        psbt.push(0x00); // dummy input
-    }
-
-    let to_script = if to_address.starts_with(network.bech32_hrp()) {
-        let (_hrp, data, _) = bech32::decode(to_address).unwrap();
-        let (ver, prog) = data.split_first().unwrap();
-        let prog = Vec::from_base32(prog).unwrap();
-        p2wpkh_script(&prog)
-    } else {
-        address::address_to_scriptpubkey(to_address, network)
-    };
-
-    psbt.push(0x00); // dummy output
-    psbt.extend(to_script);
-
-    psbt
 }

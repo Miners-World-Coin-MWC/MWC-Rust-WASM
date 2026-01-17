@@ -28,7 +28,6 @@ pub fn pubkey_to_bech32_wasm(wif: &str, mainnet: bool) -> String {
     let privkey = keys::wif_to_privkey(wif, net);
     let pubkey = keys::privkey_to_pubkey(&privkey);
 
-    // Use the new pubkey_to_bech32 function from address.rs
     address::pubkey_to_bech32(&pubkey, net.bech32_hrp())
 }
 
@@ -37,7 +36,7 @@ pub fn validate_address(addr: &str, mainnet: bool) -> bool {
     address::validate_address(addr, if mainnet { Network::Mainnet } else { Network::Testnet })
 }
 
-/// Estimate fee with input type support: "p2pkh", "p2sh", "p2wpkh"
+/// Legacy fee estimator: by input type
 #[wasm_bindgen]
 pub fn estimate_fee_wasm(
     inputs: usize,
@@ -46,6 +45,18 @@ pub fn estimate_fee_wasm(
     input_type: &str
 ) -> u64 {
     fees::estimate_fee(inputs, outputs, sat_per_byte, input_type)
+}
+
+/// Auto-detect input types from UTXOs JSON and compute true fee (vbytes)
+#[wasm_bindgen]
+pub fn estimate_fee_from_utxos_wasm(
+    utxos_json: &str,
+    outputs: usize,
+    sat_per_byte: u64
+) -> u64 {
+    let utxos: Vec<tx::UTXO> = serde_json::from_str(utxos_json).expect("invalid UTXO JSON");
+
+    fees::estimate_fee_from_utxos(&utxos, outputs, sat_per_byte)
 }
 
 #[wasm_bindgen]

@@ -1,6 +1,7 @@
 use secp256k1::PublicKey;
 use bs58;
 use crate::network::Network;
+use bech32;
 
 pub fn pubkey_to_address(pubkey: &PublicKey, network: Network) -> String {
     let hash160 = crate::crypto::hash160(&pubkey.serialize());
@@ -46,6 +47,11 @@ pub fn address_to_scriptpubkey(addr: &str, network: Network) -> Vec<u8> {
         p if p == network.p2sh_prefix() => p2sh_script(hash160),
         _ => panic!("invalid address prefix"),
     }
+}
+
+pub fn pubkey_to_bech32(pubkey: &PublicKey, hrp: &str) -> String {
+    let hash = crate::crypto::hash160(&pubkey.serialize());
+    bech32::encode(hrp, bech32::u5::try_from_u8(0).unwrap().into_iter().chain(hash.iter().map(|b| bech32::u5::try_from_u8(*b).unwrap())), bech32::Variant::Bech32).unwrap()
 }
 
 fn p2pkh_script(hash160: &[u8]) -> Vec<u8> {

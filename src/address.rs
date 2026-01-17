@@ -54,16 +54,13 @@ pub fn address_to_scriptpubkey(addr: &str, network: Network) -> Vec<u8> {
 }
 
 pub fn pubkey_to_bech32(pubkey: &PublicKey, hrp: &str) -> String {
-    // HASH160(pubkey)
     let hash160 = crate::crypto::hash160(&pubkey.serialize());
 
-    // Witness version 0 + program
-    let mut data = Vec::with_capacity(1 + hash160.len());
-    data.push(bech32::u5::try_from_u8(0).unwrap()); // v0 witness
-    data.extend(hash160.to_base32()); // proper 8 -> 5 bit conversion
+    // Witness version 0 + program (HASH160)
+    let mut data = vec![bech32::u5::try_from_u8(0).unwrap()];
+    data.extend(hash160.to_base32());
 
-    bech32::encode(hrp, data, Variant::Bech32)
-        .expect("bech32 encoding failed")
+    bech32::encode(hrp, data, Variant::Bech32).unwrap()
 }
 
 fn p2pkh_script(hash160: &[u8]) -> Vec<u8> {

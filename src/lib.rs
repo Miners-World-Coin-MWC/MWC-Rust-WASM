@@ -27,8 +27,9 @@ pub fn pubkey_to_bech32_wasm(wif: &str, mainnet: bool) -> String {
     let net = if mainnet { Network::Mainnet } else { Network::Testnet };
     let privkey = keys::wif_to_privkey(wif, net);
     let pubkey = keys::privkey_to_pubkey(&privkey);
-    let hrp = if mainnet { "mwc" } else { "tmwc" };
-    crate::address::pubkey_to_bech32(&pubkey, hrp)
+
+    // Use the new pubkey_to_bech32 function from address.rs
+    address::pubkey_to_bech32(&pubkey, net.bech32_hrp())
 }
 
 #[wasm_bindgen]

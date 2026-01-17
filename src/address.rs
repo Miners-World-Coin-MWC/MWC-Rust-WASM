@@ -1,7 +1,7 @@
 use secp256k1::PublicKey;
 use bs58;
 use crate::network::Network;
-use bech32;
+use bech32::{self, ToBase32, Variant};
 
 pub fn pubkey_to_address(pubkey: &PublicKey, network: Network) -> String {
     let hash160 = crate::crypto::hash160(&pubkey.serialize());
@@ -38,7 +38,11 @@ pub fn validate_address(addr: &str, network: Network) -> bool {
 }
 
 pub fn address_to_scriptpubkey(addr: &str, network: Network) -> Vec<u8> {
-    let decoded = bs58::decode(addr).into_vec().unwrap();
+    if addr.starts_with(network.bech32_hrp()) {
+        return p2wpkh_script_from_bech32(addr, network);
+    }
+
+    let decoded = bs58::decode(addr).expect("invalid base58 address");
     let prefix = decoded[0];
     let hash160 = &decoded[1..21];
 
@@ -50,8 +54,16 @@ pub fn address_to_scriptpubkey(addr: &str, network: Network) -> Vec<u8> {
 }
 
 pub fn pubkey_to_bech32(pubkey: &PublicKey, hrp: &str) -> String {
-    let hash = crate::crypto::hash160(&pubkey.serialize());
-    bech32::encode(hrp, bech32::u5::try_from_u8(0).unwrap().into_iter().chain(hash.iter().map(|b| bech32::u5::try_from_u8(*b).unwrap())), bech32::Variant::Bech32).unwrap()
+    // HASH160(pubkey)
+    let hash160 = crate::crypto::hash160(&pubkey.serialize());
+
+    // Witness version 0 + program
+    let mut data = Vec::with_capacity(1 + hash160.len());
+    data.push(bech32::u5::try_from_u8(0).unwrap()); // v0 witness
+    data.extend(hash160.to_base32()); // proper 8 -> 5 bit conversion
+
+    bech32::encode(hrp, data, Variant::Bech32)
+        .expect("bech32 encoding failed")
 }
 
 fn p2pkh_script(hash160: &[u8]) -> Vec<u8> {

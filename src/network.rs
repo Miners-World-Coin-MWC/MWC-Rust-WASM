@@ -38,6 +38,7 @@ impl Network {
     }
 
     // Return true if HRP matches this network
+    #[allow(dead_code)]
     pub fn matches_bech32(self, addr: &str) -> bool {
         addr.starts_with(self.bech32_hrp())
     }

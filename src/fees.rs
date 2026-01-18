@@ -75,8 +75,8 @@ pub fn estimate_fee(
     // ------------------------------------------------------------------
     total_weight += 10 * 4;
 
-    // Convert weight → vbytes (round up)
-    let vbytes = (total_weight + 3) / 4;
+    // Convert weight → vbytes (round up, BIP-141 correct)
+    let vbytes = total_weight.div_ceil(4);
 
     vbytes as u64 * sat_per_vbyte
 }

@@ -56,9 +56,6 @@ pub fn validate_address(addr: &str, mainnet: bool) -> bool {
     )
 }
 
-// ----------------------------------------------------------------------
-// TRUE WEIGHT / VBYTES FEE ESTIMATION (AUTO-DETECTED)
-// ----------------------------------------------------------------------
 #[wasm_bindgen]
 pub fn estimate_fee_wasm(
     input_scripts_json: &str,
@@ -74,9 +71,6 @@ pub fn estimate_fee_wasm(
     fees::estimate_fee(&input_scripts, &output_scripts, sat_per_byte)
 }
 
-// ----------------------------------------------------------------------
-// FEE ESTIMATION DIRECTLY FROM UTXOS JSON
-// ----------------------------------------------------------------------
 #[wasm_bindgen]
 pub fn estimate_fee_from_utxos_wasm(
     utxos_json: &str,
@@ -93,9 +87,6 @@ pub fn estimate_fee_from_utxos_wasm(
     fees::estimate_fee(&input_scripts, &output_scripts, sat_per_byte)
 }
 
-// ----------------------------------------------------------------------
-// JS-friendly TX result struct
-// ----------------------------------------------------------------------
 #[wasm_bindgen]
 pub struct WasmTxResult {
     raw_tx: String,
@@ -127,9 +118,6 @@ impl WasmTxResult {
     }
 }
 
-// ----------------------------------------------------------------------
-// Create & sign TX (returns JS-friendly struct)
-// ----------------------------------------------------------------------
 #[wasm_bindgen]
 pub fn create_signed_tx_full(
     utxos_json: &str,

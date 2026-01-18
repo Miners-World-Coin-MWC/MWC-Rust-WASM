@@ -1,11 +1,13 @@
 use crate::{address, crypto, keys, network::Network, utils};
 use secp256k1::{Message, Secp256k1};
-use serde::Deserialize;
+use serde::Deserialize; // for div_ceil
 
 // --------------------
 // UTXO struct
 // --------------------
 #[derive(Deserialize)]
+#[allow(clippy::upper_case_acronyms)]
+#[allow(non_snake_case)]
 pub struct UTXO {
     pub txid: String,
     pub vout: u32,
@@ -76,7 +78,6 @@ pub fn create_and_sign(
     };
 
     let secp = Secp256k1::new();
-
     let utxos: Vec<UTXO> = serde_json::from_str(utxos_json).expect("invalid UTXO JSON");
 
     let total_in: u64 = utxos.iter().map(|u| u.amount).sum();
@@ -211,7 +212,7 @@ pub fn create_and_sign(
 
     let base_size = tx.len() - witness_size;
     let weight = base_size * 4 + witness_size;
-    let vbytes = ((weight + 3) / 4) as u64;
+    let vbytes = weight.div_ceil(4) as u64;
 
     let raw_tx_hex = utils::bytes_to_hex(&tx);
 
@@ -246,9 +247,7 @@ pub fn create_and_sign(
         psbt.push(0x00);
     }
 
-    for _ in 0..output_count {
-        psbt.push(0x00);
-    }
+    psbt.extend(std::iter::repeat_n(0x00, output_count));
 
     TxResult {
         raw_tx: raw_tx_hex,

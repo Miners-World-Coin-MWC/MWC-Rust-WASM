@@ -77,8 +77,7 @@ pub fn create_and_sign(
 
     let secp = Secp256k1::new();
 
-    let utxos: Vec<UTXO> =
-        serde_json::from_str(utxos_json).expect("invalid UTXO JSON");
+    let utxos: Vec<UTXO> = serde_json::from_str(utxos_json).expect("invalid UTXO JSON");
 
     let total_in: u64 = utxos.iter().map(|u| u.amount).sum();
     assert!(total_in >= amount + fee, "insufficient funds");
@@ -89,9 +88,9 @@ pub fn create_and_sign(
     let pubkey = keys::privkey_to_pubkey(&privkey);
     let pubkey_bytes = pubkey.serialize().to_vec();
 
-    let has_segwit = utxos.iter().any(|u| {
-        detect_input_type(&utils::hex_to_bytes(&u.scriptPubKey)) == InputType::P2WPKH
-    });
+    let has_segwit = utxos
+        .iter()
+        .any(|u| detect_input_type(&utils::hex_to_bytes(&u.scriptPubKey)) == InputType::P2WPKH);
 
     // -------------------- outputs --------------------
     let mut outputs = Vec::new();
@@ -146,18 +145,10 @@ pub fn create_and_sign(
                 let pubkey_hash = &script[2..22];
                 let script_code = address::p2pkh_script(pubkey_hash);
 
-                let sighash = crypto::bip143_sighash(
-                    &utxos,
-                    i,
-                    &script_code,
-                    utxo.amount,
-                    &outputs,
-                );
+                let sighash =
+                    crypto::bip143_sighash(&utxos, i, &script_code, utxo.amount, &outputs);
 
-                let sig = secp.sign_ecdsa(
-                    &Message::from_digest_slice(&sighash).unwrap(),
-                    &privkey,
-                );
+                let sig = secp.sign_ecdsa(&Message::from_digest_slice(&sighash).unwrap(), &privkey);
 
                 let mut sig_der = sig.serialize_der().to_vec();
                 sig_der.push(0x01);
@@ -168,10 +159,7 @@ pub fn create_and_sign(
             InputType::P2PKH => {
                 let sighash = crypto::legacy_sighash(&utxos, i, &outputs);
 
-                let sig = secp.sign_ecdsa(
-                    &Message::from_digest_slice(&sighash).unwrap(),
-                    &privkey,
-                );
+                let sig = secp.sign_ecdsa(&Message::from_digest_slice(&sighash).unwrap(), &privkey);
 
                 let mut sig_der = sig.serialize_der().to_vec();
                 sig_der.push(0x01);

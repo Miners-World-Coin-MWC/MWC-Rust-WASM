@@ -94,9 +94,7 @@ mod tests {
             "001489abcdefabbaabbaabbaabbaabbaabbaabbaabba".to_string(),
         ];
 
-        let outputs = vec![
-            "001489abcdefabbaabbaabbaabbaabbaabbaabbaabba".to_string(),
-        ];
+        let outputs = vec!["001489abcdefabbaabbaabbaabbaabbaabbaabbaabba".to_string()];
 
         let fee = estimate_fee(&inputs, &outputs, 50);
         assert!(fee > 0);

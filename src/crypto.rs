@@ -1,8 +1,8 @@
 use crate::tx::UTXO;
 use crate::utils;
 
-use sha2::{Digest, Sha256};
 use ripemd::Ripemd160;
+use sha2::{Digest, Sha256};
 
 // --------
 // Hashing helpers
@@ -30,11 +30,7 @@ pub fn checksum(data: &[u8]) -> Vec<u8> {
 // --------
 
 // Legacy sighash (pre-SegWit)
-pub fn legacy_sighash(
-    utxos: &[UTXO],
-    input_index: usize,
-    outputs_serialized: &[u8],
-) -> Vec<u8> {
+pub fn legacy_sighash(utxos: &[UTXO], input_index: usize, outputs_serialized: &[u8]) -> Vec<u8> {
     let mut tx = Vec::new();
     tx.extend(utils::u32_le(1)); // version
     tx.extend(utils::varint(utxos.len()));

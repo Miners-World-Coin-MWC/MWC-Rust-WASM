@@ -105,8 +105,7 @@ fn p2wpkh_script_from_bech32(addr: &str) -> Vec<u8> {
     let version = data[0].to_u8();
     assert!(version == 0, "unsupported witness version");
 
-    let program =
-        Vec::<u8>::from_base32(&data[1..]).expect("invalid witness program");
+    let program = Vec::<u8>::from_base32(&data[1..]).expect("invalid witness program");
 
     assert!(program.len() == 20, "invalid P2WPKH length");
 

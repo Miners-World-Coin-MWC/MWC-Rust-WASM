@@ -85,8 +85,7 @@ pub fn estimate_fee_from_utxos_wasm(
 ) -> u64 {
     let utxos: Vec<tx::UTXO> = serde_json::from_str(utxos_json).expect("invalid UTXO JSON");
 
-    let input_scripts: Vec<String> =
-        utxos.iter().map(|u| u.scriptPubKey.clone()).collect();
+    let input_scripts: Vec<String> = utxos.iter().map(|u| u.scriptPubKey.clone()).collect();
 
     let output_scripts: Vec<String> =
         serde_json::from_str(output_scripts_json).expect("invalid output scripts JSON");

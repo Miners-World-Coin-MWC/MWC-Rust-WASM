@@ -1,9 +1,9 @@
 use crate::{crypto, network::Network};
-use bs58;
+use bs58::*;
 use rand::rngs::OsRng;
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
 
-/// Generate a new compressed WIF private key
+// Generate a new compressed WIF private key
 pub fn generate_wif(network: Network) -> String {
     let secp = Secp256k1::new();
     let mut rng = OsRng;
@@ -20,7 +20,7 @@ pub fn generate_wif(network: Network) -> String {
     bs58::encode(payload).into_string()
 }
 
-/// Decode WIF into SecretKey
+// Decode WIF into SecretKey
 pub fn wif_to_privkey(wif: &str, network: Network) -> SecretKey {
     let data = bs58::decode(wif).into_vec().expect("invalid WIF");
 
@@ -36,7 +36,7 @@ pub fn wif_to_privkey(wif: &str, network: Network) -> SecretKey {
     SecretKey::from_slice(&data[1..33]).expect("invalid private key")
 }
 
-/// Derive compressed public key from private key
+// Derive compressed public key from private key
 pub fn privkey_to_pubkey(secret: &SecretKey) -> PublicKey {
     let secp = Secp256k1::new();
     PublicKey::from_secret_key(&secp, secret)

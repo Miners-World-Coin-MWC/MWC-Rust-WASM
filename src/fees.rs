@@ -1,6 +1,6 @@
-use hex;
+use hex::*;
 
-/// Supported script types
+// Supported script types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ScriptType {
     P2PKH,
@@ -8,7 +8,7 @@ pub enum ScriptType {
     P2WPKH,
 }
 
-/// Detect script type from scriptPubKey hex
+// Detect script type from scriptPubKey hex
 pub fn detect_script_type(script_hex: &str) -> ScriptType {
     let bytes = match hex::decode(script_hex) {
         Ok(b) => b,
@@ -29,9 +29,9 @@ pub fn detect_script_type(script_hex: &str) -> ScriptType {
     }
 }
 
-/// Estimate transaction fee using **true BIP-141 weight units**
-///
-/// Returns **fee in satoshis**
+// Estimate transaction fee using **true BIP-141 weight units**
+//
+// Returns **fee in satoshis**
 pub fn estimate_fee(
     input_scripts: &[String],
     output_scripts: &[String],

@@ -1,9 +1,9 @@
 use crate::network::Network;
-use bech32::{self, ToBase32, Variant};
-use bs58;
+use bech32::{self, FromBase32, ToBase32, Variant};
+use bs58::*;
 use secp256k1::PublicKey;
 
-/// Convert public key to legacy P2PKH address
+// Convert public key to legacy P2PKH address
 pub fn pubkey_to_address(pubkey: &PublicKey, network: Network) -> String {
     let hash160 = crate::crypto::hash160(&pubkey.serialize());
 
@@ -17,7 +17,7 @@ pub fn pubkey_to_address(pubkey: &PublicKey, network: Network) -> String {
     bs58::encode(payload).into_string()
 }
 
-/// Validate Base58 P2PKH / P2SH address (NOT bech32)
+// Validate Base58 P2PKH / P2SH address (NOT bech32)
 pub fn validate_address(addr: &str, network: Network) -> bool {
     let decoded = match bs58::decode(addr).into_vec() {
         Ok(v) => v,
@@ -40,7 +40,7 @@ pub fn validate_address(addr: &str, network: Network) -> bool {
     checksum == expected
 }
 
-/// Convert address (P2PKH / P2SH / Bech32 v0) to scriptPubKey
+// Convert address (P2PKH / P2SH / Bech32 v0) to scriptPubKey
 pub fn address_to_scriptpubkey(addr: &str, network: Network) -> Vec<u8> {
     if addr.starts_with(network.bech32_hrp()) {
         return p2wpkh_script_from_bech32(addr);
@@ -57,7 +57,7 @@ pub fn address_to_scriptpubkey(addr: &str, network: Network) -> Vec<u8> {
     }
 }
 
-/// Convert public key to Bech32 P2WPKH address
+// Convert public key to Bech32 P2WPKH address
 pub fn pubkey_to_bech32(pubkey: &PublicKey, hrp: &str) -> String {
     let hash160 = crate::crypto::hash160(&pubkey.serialize());
 
@@ -68,11 +68,12 @@ pub fn pubkey_to_bech32(pubkey: &PublicKey, hrp: &str) -> String {
     bech32::encode(hrp, data, Variant::Bech32).unwrap()
 }
 
-/// --------------------
-/// Script builders
-/// --------------------
+// --------------------
+// Script builders
+// --------------------
 
-fn p2pkh_script(hash160: &[u8]) -> Vec<u8> {
+// P2PKH script (USED by tx builder)
+pub fn p2pkh_script(hash160: &[u8]) -> Vec<u8> {
     let mut script = Vec::with_capacity(25);
     script.extend([
         0x76, // OP_DUP
@@ -87,7 +88,7 @@ fn p2pkh_script(hash160: &[u8]) -> Vec<u8> {
     script
 }
 
-fn p2sh_script(hash160: &[u8]) -> Vec<u8> {
+pub fn p2sh_script(hash160: &[u8]) -> Vec<u8> {
     let mut script = Vec::with_capacity(23);
     script.push(0xa9); // OP_HASH160
     script.push(0x14);
@@ -96,14 +97,16 @@ fn p2sh_script(hash160: &[u8]) -> Vec<u8> {
     script
 }
 
-/// Decode Bech32 P2WPKH address into scriptPubKey
+// Decode Bech32 P2WPKH address into scriptPubKey
 fn p2wpkh_script_from_bech32(addr: &str) -> Vec<u8> {
-    let (_hrp, data, _) = bech32::decode(addr).expect("invalid bech32");
+    let (_hrp, data, variant) = bech32::decode(addr).expect("invalid bech32");
+    assert_eq!(variant, Variant::Bech32, "invalid bech32 variant");
 
     let version = data[0].to_u8();
     assert!(version == 0, "unsupported witness version");
 
-    let program: Vec<u8> = Vec::<u8>::from_base32(&data[1..]).expect("invalid witness program");
+    let program =
+        Vec::<u8>::from_base32(&data[1..]).expect("invalid witness program");
 
     assert!(program.len() == 20, "invalid P2WPKH length");
 

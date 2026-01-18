@@ -1,8 +1,40 @@
 use crate::tx::UTXO;
 use crate::utils;
 
-/// Legacy sighash (pre-SegWit)
-pub fn legacy_sighash(utxos: &[UTXO], input_index: usize, outputs_serialized: &[u8]) -> Vec<u8> {
+use sha2::{Digest, Sha256};
+use ripemd::Ripemd160;
+
+// --------
+// Hashing helpers
+// --------
+
+pub fn sha256(data: &[u8]) -> Vec<u8> {
+    Sha256::digest(data).to_vec()
+}
+
+pub fn double_sha256(data: &[u8]) -> Vec<u8> {
+    sha256(&sha256(data))
+}
+
+pub fn hash160(data: &[u8]) -> Vec<u8> {
+    let sha = sha256(data);
+    Ripemd160::digest(&sha).to_vec()
+}
+
+pub fn checksum(data: &[u8]) -> Vec<u8> {
+    double_sha256(data)[0..4].to_vec()
+}
+
+// --------
+// Sighash implementations
+// --------
+
+// Legacy sighash (pre-SegWit)
+pub fn legacy_sighash(
+    utxos: &[UTXO],
+    input_index: usize,
+    outputs_serialized: &[u8],
+) -> Vec<u8> {
     let mut tx = Vec::new();
     tx.extend(utils::u32_le(1)); // version
     tx.extend(utils::varint(utxos.len()));
@@ -31,7 +63,7 @@ pub fn legacy_sighash(utxos: &[UTXO], input_index: usize, outputs_serialized: &[
     double_sha256(&tx)
 }
 
-/// BIP143 SegWit v0 sighash
+// BIP143 SegWit v0 sighash
 pub fn bip143_sighash(
     utxos: &[UTXO],
     input_index: usize,

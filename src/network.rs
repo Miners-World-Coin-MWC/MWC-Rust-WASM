@@ -5,7 +5,7 @@ pub enum Network {
 }
 
 impl Network {
-    /// P2PKH Base58 prefix
+    // P2PKH Base58 prefix
     pub fn p2pkh_prefix(self) -> u8 {
         match self {
             Network::Mainnet => 0x14, // MWC mainnet P2PKH
@@ -13,7 +13,7 @@ impl Network {
         }
     }
 
-    /// P2SH Base58 prefix
+    // P2SH Base58 prefix
     pub fn p2sh_prefix(self) -> u8 {
         match self {
             Network::Mainnet => 0x0A, // MWC mainnet P2SH
@@ -21,7 +21,7 @@ impl Network {
         }
     }
 
-    /// WIF private key prefix
+    // WIF private key prefix
     pub fn wif_prefix(self) -> u8 {
         match self {
             Network::Mainnet => 0x7B, // MWC mainnet WIF
@@ -29,7 +29,7 @@ impl Network {
         }
     }
 
-    /// Bech32 HRP (SegWit v0+)
+    // Bech32 HRP (SegWit v0+)
     pub fn bech32_hrp(self) -> &'static str {
         match self {
             Network::Mainnet => "mwc",
@@ -37,7 +37,7 @@ impl Network {
         }
     }
 
-    /// Return true if HRP matches this network
+    // Return true if HRP matches this network
     pub fn matches_bech32(self, addr: &str) -> bool {
         addr.starts_with(self.bech32_hrp())
     }

@@ -93,14 +93,43 @@ pub fn estimate_fee_from_utxos_wasm(
     fees::estimate_fee(&input_scripts, &output_scripts, sat_per_byte)
 }
 
+// ----------------------------------------------------------------------
+// JS-friendly TX result struct
+// ----------------------------------------------------------------------
 #[wasm_bindgen]
 pub struct WasmTxResult {
-    pub raw_tx: String,
-    pub psbt: String,
-    pub vbytes: u64,
-    pub effective_fee: u64,
+    raw_tx: String,
+    psbt: String,
+    vbytes: u64,
+    effective_fee: u64,
 }
 
+#[wasm_bindgen]
+impl WasmTxResult {
+    #[wasm_bindgen(getter)]
+    pub fn raw_tx(&self) -> String {
+        self.raw_tx.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn psbt(&self) -> String {
+        self.psbt.clone()
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn vbytes(&self) -> u64 {
+        self.vbytes
+    }
+
+    #[wasm_bindgen(getter)]
+    pub fn effective_fee(&self) -> u64 {
+        self.effective_fee
+    }
+}
+
+// ----------------------------------------------------------------------
+// Create & sign TX (returns JS-friendly struct)
+// ----------------------------------------------------------------------
 #[wasm_bindgen]
 pub fn create_signed_tx_full(
     utxos_json: &str,

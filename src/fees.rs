@@ -1,4 +1,4 @@
-use hex;
+use hex::{decode, encode};
 
 // Supported script types
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

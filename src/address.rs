@@ -1,6 +1,6 @@
 use crate::network::Network;
 use bech32::{self, FromBase32, ToBase32, Variant};
-use bs58;
+use bs58::{decode, encode};
 use secp256k1::PublicKey;
 
 // --------------------------------------------------

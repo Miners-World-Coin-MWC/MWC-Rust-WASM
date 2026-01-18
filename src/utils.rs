@@ -1,5 +1,5 @@
 use base64::{engine::general_purpose, Engine as _};
-use hex;
+use hex::{decode, encode};
 
 // --------------------
 // Hex helpers

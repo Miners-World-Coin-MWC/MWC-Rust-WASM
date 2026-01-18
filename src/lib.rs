@@ -94,13 +94,27 @@ pub fn estimate_fee_from_utxos_wasm(
 }
 
 #[wasm_bindgen]
-pub fn create_signed_tx(
+pub struct WasmTxResult {
+    pub raw_tx: String,
+    pub psbt: String,
+    pub vbytes: u64,
+    pub effective_fee: u64,
+}
+
+#[wasm_bindgen]
+pub fn create_signed_tx_full(
     utxos_json: &str,
     to_address: &str,
     amount: u64,
     fee: u64,
     wif: &str,
     mainnet: bool,
-) -> String {
-    tx::create_and_sign(utxos_json, to_address, amount, fee, wif, mainnet)
+) -> WasmTxResult {
+    let tx_result = tx::create_and_sign(utxos_json, to_address, amount, fee, wif, mainnet);
+    WasmTxResult {
+        raw_tx: tx_result.raw_tx,
+        psbt: tx_result.psbt,
+        vbytes: tx_result.vbytes,
+        effective_fee: tx_result.effective_fee,
+    }
 }

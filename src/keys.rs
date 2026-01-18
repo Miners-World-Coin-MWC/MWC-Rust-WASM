@@ -1,5 +1,5 @@
 use crate::{crypto, network::Network};
-use bs58::*;
+use bs58;
 use rand::rngs::OsRng;
 use secp256k1::{PublicKey, Secp256k1, SecretKey};
 

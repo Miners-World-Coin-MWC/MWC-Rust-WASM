@@ -1,7 +1,6 @@
 use crate::{address, crypto, keys, network::Network, utils};
 use secp256k1::{Message, Secp256k1};
 use serde::Deserialize;
-use std::collections::BTreeMap;
 
 // --------------------
 // UTXO struct
@@ -75,20 +74,24 @@ pub fn create_and_sign(
     } else {
         Network::Testnet
     };
+
     let secp = Secp256k1::new();
 
-    let utxos: Vec<UTXO> = serde_json::from_str(utxos_json).expect("invalid UTXO JSON");
+    let utxos: Vec<UTXO> =
+        serde_json::from_str(utxos_json).expect("invalid UTXO JSON");
+
     let total_in: u64 = utxos.iter().map(|u| u.amount).sum();
     assert!(total_in >= amount + fee, "insufficient funds");
 
     let mut change = total_in - amount - fee;
+
     let privkey = keys::wif_to_privkey(wif, network);
     let pubkey = keys::privkey_to_pubkey(&privkey);
     let pubkey_bytes = pubkey.serialize().to_vec();
 
-    let has_segwit = utxos
-        .iter()
-        .any(|u| detect_input_type(&utils::hex_to_bytes(&u.scriptPubKey)) == InputType::P2WPKH);
+    let has_segwit = utxos.iter().any(|u| {
+        detect_input_type(&utils::hex_to_bytes(&u.scriptPubKey)) == InputType::P2WPKH
+    });
 
     // -------------------- outputs --------------------
     let mut outputs = Vec::new();
@@ -108,20 +111,24 @@ pub fn create_and_sign(
     if change >= dust_threshold() {
         let change_addr = address::pubkey_to_address(&pubkey, network);
         let change_script = address::address_to_scriptpubkey(&change_addr, network);
+
         outputs.extend(utils::u64_le(change));
         outputs.extend(utils::varint(change_script.len()));
         outputs.extend(change_script);
+
         output_count += 1;
     }
 
     // -------------------- build raw TX --------------------
     let mut tx = Vec::new();
     tx.extend(utils::u32_le(1));
+
     if has_segwit {
         tx.extend([0x00, 0x01]);
     }
 
     tx.extend(utils::varint(utxos.len()));
+
     let mut witnesses: Vec<Vec<Vec<u8>>> = vec![vec![]; utxos.len()];
 
     for (i, utxo) in utxos.iter().enumerate() {
@@ -138,29 +145,42 @@ pub fn create_and_sign(
 
                 let pubkey_hash = &script[2..22];
                 let script_code = address::p2pkh_script(pubkey_hash);
-                let sighash =
-                    crypto::bip143_sighash(&utxos, i, &script_code, utxo.amount, &outputs);
 
-                let sig = secp.sign_ecdsa(&Message::from_digest_slice(&sighash).unwrap(), &privkey);
+                let sighash = crypto::bip143_sighash(
+                    &utxos,
+                    i,
+                    &script_code,
+                    utxo.amount,
+                    &outputs,
+                );
+
+                let sig = secp.sign_ecdsa(
+                    &Message::from_digest_slice(&sighash).unwrap(),
+                    &privkey,
+                );
 
                 let mut sig_der = sig.serialize_der().to_vec();
-                sig_der.push(0x01); // SIGHASH_ALL
+                sig_der.push(0x01);
 
-                witnesses[i] = vec![sig_der.clone(), pubkey_bytes.clone()];
+                witnesses[i] = vec![sig_der, pubkey_bytes.clone()];
             }
 
             InputType::P2PKH => {
                 let sighash = crypto::legacy_sighash(&utxos, i, &outputs);
-                let sig = secp.sign_ecdsa(&Message::from_digest_slice(&sighash).unwrap(), &privkey);
+
+                let sig = secp.sign_ecdsa(
+                    &Message::from_digest_slice(&sighash).unwrap(),
+                    &privkey,
+                );
 
                 let mut sig_der = sig.serialize_der().to_vec();
                 sig_der.push(0x01);
 
                 let mut script_sig = Vec::new();
                 script_sig.extend(utils::varint(sig_der.len()));
-                script_sig.extend(sig_der.clone());
+                script_sig.extend(&sig_der);
                 script_sig.extend(utils::varint(pubkey_bytes.len()));
-                script_sig.extend(pubkey_bytes.clone());
+                script_sig.extend(&pubkey_bytes);
 
                 tx.extend(utils::varint(script_sig.len()));
                 tx.extend(script_sig);
@@ -211,19 +231,16 @@ pub fn create_and_sign(
     let mut psbt = Vec::new();
     psbt.extend(b"psbt\xff");
 
-    // global unsigned tx
     psbt_kv(&mut psbt, 0x00, &[], &tx);
     psbt.push(0x00);
 
-    // inputs
     for (i, utxo) in utxos.iter().enumerate() {
         let script = utils::hex_to_bytes(&utxo.scriptPubKey);
         let input_type = detect_input_type(&script);
 
         match input_type {
             InputType::P2PKH => {
-                let prev_tx = utils::hex_to_bytes(&raw_tx_hex);
-                psbt_kv(&mut psbt, 0x00, &[], &prev_tx);
+                psbt_kv(&mut psbt, 0x00, &[], &tx);
             }
             InputType::P2WPKH => {
                 let mut wit = Vec::new();
@@ -234,7 +251,6 @@ pub fn create_and_sign(
             }
         }
 
-        // partial sig
         let mut sig = witnesses[i][0].clone();
         sig.push(0x01);
         psbt_kv(&mut psbt, 0x02, &pubkey_bytes, &sig);
@@ -242,7 +258,6 @@ pub fn create_and_sign(
         psbt.push(0x00);
     }
 
-    // outputs
     for _ in 0..output_count {
         psbt.push(0x00);
     }

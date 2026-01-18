@@ -1,12 +1,15 @@
-use base64;
-use hex::*;
+use base64::{engine::general_purpose, Engine as _};
+use hex;
 
 // --------------------
 // Hex helpers
 // --------------------
 
 pub fn hex_to_bytes(s: &str) -> Vec<u8> {
-    hex::decode(s).expect("invalid hex")
+    match hex::decode(s) {
+        Ok(v) => v,
+        Err(_) => Vec::new(),
+    }
 }
 
 pub fn bytes_to_hex(b: &[u8]) -> String {
@@ -18,11 +21,14 @@ pub fn bytes_to_hex(b: &[u8]) -> String {
 // --------------------
 
 pub fn base64_to_bytes(s: &str) -> Vec<u8> {
-    base64::decode(s).expect("invalid base64")
+    match general_purpose::STANDARD.decode(s) {
+        Ok(v) => v,
+        Err(_) => Vec::new(),
+    }
 }
 
 pub fn bytes_to_base64(b: &[u8]) -> String {
-    base64::encode(b)
+    general_purpose::STANDARD.encode(b)
 }
 
 // --------------------
@@ -68,7 +74,7 @@ pub fn varint(n: usize) -> Vec<u8> {
 
 // PSBT magic bytes: 0x70736274 = "psbt"
 pub fn is_psbt_bytes(data: &[u8]) -> bool {
-    data.len() > 4 && data[0..4] == [0x70, 0x73, 0x62, 0x74]
+    data.len() >= 4 && data[0..4] == [0x70, 0x73, 0x62, 0x74]
 }
 
 // Accepts hex OR base64, returns raw bytes
@@ -79,7 +85,10 @@ pub fn parse_tx_or_psbt(input: &str) -> Vec<u8> {
     }
 
     // Fallback to base64 (PSBT)
-    base64::decode(input).expect("invalid hex or base64 input")
+    match general_purpose::STANDARD.decode(input) {
+        Ok(v) => v,
+        Err(_) => Vec::new(),
+    }
 }
 
 // High-level discriminator

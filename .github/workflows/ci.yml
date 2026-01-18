@@ -40,7 +40,7 @@ jobs:
           fi
 
   # --------------------
-  # Build & test job
+  # Build, Test & WASM
   # --------------------
   build:
     name: Build & Test (${{ matrix.os }})
@@ -56,11 +56,18 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # --------------------
+      # Rust toolchain
+      # --------------------
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
 
+      # --------------------
+      # Cache Cargo
+      # --------------------
       - name: Cache Cargo registry
         uses: actions/cache@v4
         with:
@@ -72,14 +79,48 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      # --------------------
+      # Formatting (check)
+      # --------------------
       - name: Cargo fmt (check)
         run: cargo fmt --all -- --check
 
+      # --------------------
+      # Clippy (strict)
+      # --------------------
       - name: Cargo clippy
         run: cargo clippy --all-targets --all-features -- -D warnings
 
+      # --------------------
+      # Native build & tests
+      # --------------------
       - name: Cargo build (release)
         run: cargo build --release
 
       - name: Cargo test
         run: cargo test --all-features
+
+      # --------------------
+      # Install wasm-pack
+      # --------------------
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@v0.4.0
+
+      # --------------------
+      # Build WASM package
+      # --------------------
+      - name: Build WASM (wasm-pack)
+        run: |
+          wasm-pack build \
+            --release \
+            --target web \
+            --out-dir pkg
+
+      # --------------------
+      # Upload WASM artifacts
+      # --------------------
+      - name: Upload WASM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: mwc-wallet-wasm-${{ runner.os }}
+          path: pkg/

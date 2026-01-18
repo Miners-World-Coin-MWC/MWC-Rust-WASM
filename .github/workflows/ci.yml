@@ -7,8 +7,44 @@ on:
     branches: [ main, master ]
 
 jobs:
+  # --------------------
+  # Auto-format job
+  # --------------------
+  format:
+    name: Auto Format (rustfmt)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Install Rust toolchain (rustfmt)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Run rustfmt
+        run: cargo fmt --all
+
+      - name: Commit formatting changes
+        run: |
+          if git diff --quiet; then
+            echo "No formatting changes"
+          else
+            git config user.name "github-actions"
+            git config user.email "github-actions@github.com"
+            git commit -am "fmt: apply rustfmt"
+            git push
+          fi
+
+  # --------------------
+  # Build & test job
+  # --------------------
   build:
     name: Build & Test (${{ matrix.os }})
+    needs: format
     runs-on: ${{ matrix.os }}
 
     strategy:

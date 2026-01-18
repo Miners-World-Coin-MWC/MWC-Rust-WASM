@@ -1,5 +1,5 @@
-use hex;
 use base64;
+use hex;
 
 /// --------------------
 /// Hex helpers

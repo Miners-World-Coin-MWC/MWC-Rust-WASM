@@ -1,5 +1,5 @@
-use crate::utils;
 use crate::tx::UTXO;
+use crate::utils;
 
 /// Legacy sighash (pre-SegWit)
 pub fn legacy_sighash(utxos: &[UTXO], input_index: usize, outputs_serialized: &[u8]) -> Vec<u8> {
@@ -32,7 +32,13 @@ pub fn legacy_sighash(utxos: &[UTXO], input_index: usize, outputs_serialized: &[
 }
 
 /// BIP143 SegWit v0 sighash
-pub fn bip143_sighash(utxos: &[UTXO], input_index: usize, script_code: &[u8], amount: u64, outputs_serialized: &[u8]) -> Vec<u8> {
+pub fn bip143_sighash(
+    utxos: &[UTXO],
+    input_index: usize,
+    script_code: &[u8],
+    amount: u64,
+    outputs_serialized: &[u8],
+) -> Vec<u8> {
     let mut hash_prevouts = Vec::new();
     let mut hash_sequence = Vec::new();
 

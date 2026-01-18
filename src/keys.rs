@@ -1,7 +1,7 @@
-use secp256k1::{Secp256k1, SecretKey, PublicKey};
-use rand::rngs::OsRng;
-use bs58;
 use crate::{crypto, network::Network};
+use bs58;
+use rand::rngs::OsRng;
+use secp256k1::{PublicKey, Secp256k1, SecretKey};
 
 /// Generate a new compressed WIF private key
 pub fn generate_wif(network: Network) -> String {
@@ -22,9 +22,7 @@ pub fn generate_wif(network: Network) -> String {
 
 /// Decode WIF into SecretKey
 pub fn wif_to_privkey(wif: &str, network: Network) -> SecretKey {
-    let data = bs58::decode(wif)
-        .into_vec()
-        .expect("invalid WIF");
+    let data = bs58::decode(wif).into_vec().expect("invalid WIF");
 
     // 1 (prefix) + 32 (key) + 1 (compressed) + 4 (checksum)
     assert!(data.len() == 38, "invalid WIF length");
@@ -35,8 +33,7 @@ pub fn wif_to_privkey(wif: &str, network: Network) -> SecretKey {
     let checksum = crypto::checksum(&data[..34]);
     assert_eq!(&data[34..], &checksum, "invalid WIF checksum");
 
-    SecretKey::from_slice(&data[1..33])
-        .expect("invalid private key")
+    SecretKey::from_slice(&data[1..33]).expect("invalid private key")
 }
 
 /// Derive compressed public key from private key

@@ -1,7 +1,7 @@
-use secp256k1::PublicKey;
-use bs58;
 use crate::network::Network;
 use bech32::{self, ToBase32, Variant};
+use bs58;
+use secp256k1::PublicKey;
 
 /// Convert public key to legacy P2PKH address
 pub fn pubkey_to_address(pubkey: &PublicKey, network: Network) -> String {
@@ -75,14 +75,14 @@ pub fn pubkey_to_bech32(pubkey: &PublicKey, hrp: &str) -> String {
 fn p2pkh_script(hash160: &[u8]) -> Vec<u8> {
     let mut script = Vec::with_capacity(25);
     script.extend([
-        0x76,       // OP_DUP
-        0xa9,       // OP_HASH160
-        0x14,       // push 20 bytes
+        0x76, // OP_DUP
+        0xa9, // OP_HASH160
+        0x14, // push 20 bytes
     ]);
     script.extend(hash160);
     script.extend([
-        0x88,       // OP_EQUALVERIFY
-        0xac,       // OP_CHECKSIG
+        0x88, // OP_EQUALVERIFY
+        0xac, // OP_CHECKSIG
     ]);
     script
 }
@@ -103,8 +103,7 @@ fn p2wpkh_script_from_bech32(addr: &str) -> Vec<u8> {
     let version = data[0].to_u8();
     assert!(version == 0, "unsupported witness version");
 
-    let program: Vec<u8> = Vec::<u8>::from_base32(&data[1..])
-        .expect("invalid witness program");
+    let program: Vec<u8> = Vec::<u8>::from_base32(&data[1..]).expect("invalid witness program");
 
     assert!(program.len() == 20, "invalid P2WPKH length");
 

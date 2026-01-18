@@ -1,13 +1,13 @@
-use wasm_bindgen::prelude::*;
 use crate::network::Network;
+use wasm_bindgen::prelude::*;
 
-mod keys;
 mod address;
-mod tx;
 mod crypto;
-mod utils;
-mod network;
 mod fees;
+mod keys;
+mod network;
+mod tx;
+mod utils;
 
 #[wasm_bindgen]
 pub fn generate_wif(mainnet: bool) -> String {
@@ -83,11 +83,9 @@ pub fn estimate_fee_from_utxos_wasm(
     output_scripts_json: &str,
     sat_per_byte: u64,
 ) -> u64 {
-    let utxos: Vec<tx::UTXO> =
-        serde_json::from_str(utxos_json).expect("invalid UTXO JSON");
+    let utxos: Vec<tx::UTXO> = serde_json::from_str(utxos_json).expect("invalid UTXO JSON");
 
-    let input_scripts: Vec<String> =
-        utxos.iter().map(|u| u.scriptPubKey.clone()).collect();
+    let input_scripts: Vec<String> = utxos.iter().map(|u| u.scriptPubKey.clone()).collect();
 
     let output_scripts: Vec<String> =
         serde_json::from_str(output_scripts_json).expect("invalid output scripts JSON");

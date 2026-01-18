@@ -1,8 +1,11 @@
 use serde::Deserialize;
 use secp256k1::{Secp256k1, Message};
 use crate::{crypto, utils, keys, address, network::Network};
-use bech32::{self, ToBase32};
+use std::collections::BTreeMap;
 
+/// --------------------
+/// UTXO struct
+/// --------------------
 #[derive(Deserialize)]
 pub struct UTXO {
     pub txid: String,
@@ -11,7 +14,9 @@ pub struct UTXO {
     pub amount: u64,
 }
 
-/* -------------------- Script detection -------------------- */
+/// --------------------
+/// Input type detection
+/// --------------------
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum InputType {
     P2PKH,
@@ -26,20 +31,38 @@ fn detect_input_type(script: &[u8]) -> InputType {
     }
 }
 
+/// Dust threshold
 fn dust_threshold() -> u64 {
     546
 }
 
-/* -------------------- Return struct -------------------- */
+/// --------------------
+/// UI-friendly result
+/// --------------------
 pub struct TxResult {
-    pub raw_tx_hex: String,
-    pub psbt_hex: String,
+    pub raw_tx: String,
+    pub psbt: String,
     pub vbytes: u64,
     pub effective_fee: u64,
 }
 
-/* -------------------- Main TX + PSBT builder -------------------- */
-pub fn create_tx_and_psbt(
+/// --------------------
+/// PSBT helper
+/// --------------------
+fn psbt_kv(psbt: &mut Vec<u8>, key_type: u8, key_data: &[u8], value: &[u8]) {
+    let mut key = vec![key_type];
+    key.extend(key_data);
+
+    psbt.extend(utils::varint(key.len()));
+    psbt.extend(key);
+    psbt.extend(utils::varint(value.len()));
+    psbt.extend(value);
+}
+
+/// --------------------
+/// Main TX + PSBT builder
+/// --------------------
+pub fn create_and_sign(
     utxos_json: &str,
     to_address: &str,
     amount: u64,
@@ -49,8 +72,8 @@ pub fn create_tx_and_psbt(
 ) -> TxResult {
     let network = if mainnet { Network::Mainnet } else { Network::Testnet };
     let secp = Secp256k1::new();
-    let utxos: Vec<UTXO> = serde_json::from_str(utxos_json).expect("invalid UTXO JSON");
 
+    let utxos: Vec<UTXO> = serde_json::from_str(utxos_json).expect("invalid UTXO JSON");
     let total_in: u64 = utxos.iter().map(|u| u.amount).sum();
     assert!(total_in >= amount + fee, "insufficient funds");
 
@@ -63,7 +86,7 @@ pub fn create_tx_and_psbt(
         detect_input_type(&utils::hex_to_bytes(&u.scriptPubKey)) == InputType::P2WPKH
     });
 
-    /* ---------------- Outputs + Change ---------------- */
+    /// -------------------- outputs --------------------
     let mut outputs = Vec::new();
     let mut output_count = 1;
 
@@ -73,40 +96,34 @@ pub fn create_tx_and_psbt(
     outputs.extend(to_script);
 
     let mut effective_fee = fee;
-    let change_output_size = 8 + 1 + 25; // approx P2PKH output
-    if change < dust_threshold() || change < (change_output_size as u64 * (fee / amount)) {
-        println!("Change ({}) below dust threshold or uneconomical, adding to fee", change);
+    if change < dust_threshold() {
         effective_fee += change;
         change = 0;
     }
 
     if change >= dust_threshold() {
-        let change_address = address::pubkey_to_address(&pubkey, network);
-        let change_script = address::address_to_scriptpubkey(&change_address, network);
+        let change_addr = address::pubkey_to_address(&pubkey, network);
+        let change_script = address::address_to_scriptpubkey(&change_addr, network);
         outputs.extend(utils::u64_le(change));
         outputs.extend(utils::varint(change_script.len()));
         outputs.extend(change_script);
         output_count += 1;
     }
 
-    /* ---------------- TX header ---------------- */
+    /// -------------------- build raw TX --------------------
     let mut tx = Vec::new();
     tx.extend(utils::u32_le(1));
     if has_segwit {
         tx.extend([0x00, 0x01]);
     }
-    tx.extend(utils::varint(utxos.len()));
 
-    /* ---------------- Prepare witnesses / PSBT inputs ---------------- */
+    tx.extend(utils::varint(utxos.len()));
     let mut witnesses: Vec<Vec<Vec<u8>>> = vec![vec![]; utxos.len()];
-    let mut psbt_global = Vec::new();
-    let mut psbt_inputs: Vec<Vec<(u8, Vec<u8>)>> = vec![];
 
     for (i, utxo) in utxos.iter().enumerate() {
         let script = utils::hex_to_bytes(&utxo.scriptPubKey);
         let input_type = detect_input_type(&script);
 
-        // TX input
         tx.extend(utils::hex_to_bytes(&utxo.txid).into_iter().rev());
         tx.extend(utils::u32_le(utxo.vout));
 
@@ -117,30 +134,38 @@ pub fn create_tx_and_psbt(
 
                 let pubkey_hash = &script[2..22];
                 let script_code = address::p2pkh_script(pubkey_hash);
+                let sighash = crypto::bip143_sighash(
+                    &utxos,
+                    i,
+                    &script_code,
+                    utxo.amount,
+                    &outputs,
+                );
 
-                let sighash = crypto::bip143_sighash(&utxos, i, &script_code, utxo.amount, &outputs);
-                let sig = secp.sign_ecdsa(&Message::from_slice(&sighash).unwrap(), &privkey);
+                let sig = secp.sign_ecdsa(
+                    &Message::from_slice(&sighash).unwrap(),
+                    &privkey,
+                );
+
                 let mut sig_der = sig.serialize_der().to_vec();
-                sig_der.push(0x01);
+                sig_der.push(0x01); // SIGHASH_ALL
 
                 witnesses[i] = vec![sig_der.clone(), pubkey_bytes.clone()];
-
-                // PSBT input pre-sign
-                psbt_inputs.push(vec![
-                    (0x00, utils::hex_to_bytes(&utxo.txid)),  // Non-witness utxo placeholder
-                    (0x01, sig_der),
-                    (0x02, pubkey_bytes.clone()),
-                ]);
             }
+
             InputType::P2PKH => {
                 let sighash = crypto::legacy_sighash(&utxos, i, &outputs);
-                let sig = secp.sign_ecdsa(&Message::from_slice(&sighash).unwrap(), &privkey);
+                let sig = secp.sign_ecdsa(
+                    &Message::from_slice(&sighash).unwrap(),
+                    &privkey,
+                );
+
                 let mut sig_der = sig.serialize_der().to_vec();
                 sig_der.push(0x01);
 
                 let mut script_sig = Vec::new();
                 script_sig.extend(utils::varint(sig_der.len()));
-                script_sig.extend(sig_der);
+                script_sig.extend(sig_der.clone());
                 script_sig.extend(utils::varint(pubkey_bytes.len()));
                 script_sig.extend(pubkey_bytes.clone());
 
@@ -148,22 +173,16 @@ pub fn create_tx_and_psbt(
                 tx.extend(script_sig);
                 tx.extend(utils::u32_le(0xffffffff));
 
-                // PSBT input pre-sign
-                psbt_inputs.push(vec![
-                    (0x01, sig_der),
-                    (0x02, pubkey_bytes.clone()),
-                ]);
+                witnesses[i] = vec![sig_der, pubkey_bytes.clone()];
             }
         }
     }
 
-    /* ---------------- Outputs ---------------- */
     tx.extend(utils::varint(output_count));
     tx.extend(&outputs);
 
-    /* ---------------- Witnesses ---------------- */
     if has_segwit {
-        for w in witnesses.iter() {
+        for w in &witnesses {
             tx.extend(utils::varint(w.len()));
             for item in w {
                 tx.extend(utils::varint(item.len()));
@@ -174,32 +193,65 @@ pub fn create_tx_and_psbt(
 
     tx.extend(utils::u32_le(0)); // locktime
 
-    /* ---------------- vbytes ---------------- */
-    let vbytes = (tx.len() + 3) as u64 / 4;
+    /// -------------------- weight / vbytes --------------------
+    let witness_size: usize = if has_segwit {
+        witnesses.iter().map(|w| {
+            utils::varint(w.len()).len()
+                + w.iter().map(|i| utils::varint(i.len()).len() + i.len()).sum::<usize>()
+        }).sum()
+    } else {
+        0
+    };
 
-    /* ---------------- PSBT Serialization ---------------- */
-    // Minimal BIP-174 PSBT example
-    let mut psbt = vec![0x70, 0x73, 0x62, 0x74, 0xff]; // magic bytes
-    psbt.extend(vec![0x01, 0x00]); // PSBT version 0
+    let base_size = tx.len() - witness_size;
+    let weight = base_size * 4 + witness_size;
+    let vbytes = ((weight + 3) / 4) as u64;
 
-    // Inputs
-    for input in psbt_inputs.iter() {
-        for (key, val) in input.iter() {
-            psbt.push(*key);
-            psbt.extend(utils::varint(val.len()));
-            psbt.extend(val);
+    let raw_tx_hex = utils::bytes_to_hex(&tx);
+
+    /// -------------------- PSBT --------------------
+    let mut psbt = Vec::new();
+    psbt.extend(b"psbt\xff");
+
+    // global unsigned tx
+    psbt_kv(&mut psbt, 0x00, &[], &tx);
+    psbt.push(0x00);
+
+    // inputs
+    for (i, utxo) in utxos.iter().enumerate() {
+        let script = utils::hex_to_bytes(&utxo.scriptPubKey);
+        let input_type = detect_input_type(&script);
+
+        match input_type {
+            InputType::P2PKH => {
+                let prev_tx = utils::hex_to_bytes(&raw_tx_hex);
+                psbt_kv(&mut psbt, 0x00, &[], &prev_tx);
+            }
+            InputType::P2WPKH => {
+                let mut wit = Vec::new();
+                wit.extend(utils::u64_le(utxo.amount));
+                wit.extend(utils::varint(script.len()));
+                wit.extend(&script);
+                psbt_kv(&mut psbt, 0x01, &[], &wit);
+            }
         }
-        psbt.push(0x00); // separator
+
+        // partial sig
+        let mut sig = witnesses[i][0].clone();
+        sig.push(0x01);
+        psbt_kv(&mut psbt, 0x02, &pubkey_bytes, &sig);
+
+        psbt.push(0x00);
     }
 
-    // Outputs
+    // outputs
     for _ in 0..output_count {
-        psbt.push(0x00); // placeholder separator for outputs
+        psbt.push(0x00);
     }
 
     TxResult {
-        raw_tx_hex: utils::bytes_to_hex(&tx),
-        psbt_hex: utils::bytes_to_hex(&psbt),
+        raw_tx: raw_tx_hex,
+        psbt: utils::bytes_to_hex(&psbt),
         vbytes,
         effective_fee,
     }

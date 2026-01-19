@@ -2,6 +2,7 @@ name: CI
 
 permissions:
   contents: write
+  packages: write
 
 on:
   push:
@@ -108,13 +109,13 @@ jobs:
         uses: jetli/wasm-pack-action@v0.4.0
 
       # --------------------
-      # Build WASM
+      # Build WASM (uses wasm-pack.toml)
       # --------------------
       - name: Build WASM (wasm-pack)
         env:
           GETRANDOM_BACKEND: js
         run: |
-          wasm-pack build --release --target web --out-dir pkg
+          wasm-pack build --release
 
       # --------------------
       # Upload WASM artifacts (CI)
@@ -139,3 +140,15 @@ jobs:
             pkg/package.json
         env:
           GH_TOKEN: ${{ secrets.GH_TOKEN }}
+
+      # --------------------
+      # Publish to npm (tags only)
+      # --------------------
+      - name: Publish to npm
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          cd pkg
+          npm publish --access public
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}

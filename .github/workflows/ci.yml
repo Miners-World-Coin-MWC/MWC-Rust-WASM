@@ -107,9 +107,11 @@ jobs:
         uses: jetli/wasm-pack-action@v0.4.0
 
       # --------------------
-      # Build WASM package
+      # Build WASM package (FIXED)
       # --------------------
       - name: Build WASM (wasm-pack)
+        env:
+          GETRANDOM_BACKEND: js
         run: |
           wasm-pack build \
             --release \

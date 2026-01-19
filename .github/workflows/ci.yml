@@ -3,6 +3,8 @@ name: CI
 on:
   push:
     branches: [ main, master ]
+    tags:
+      - "v*"
   pull_request:
     branches: [ main, master ]
 
@@ -29,6 +31,7 @@ jobs:
         run: cargo fmt --all
 
       - name: Commit formatting changes
+        if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master'
         run: |
           if git diff --quiet; then
             echo "No formatting changes"
@@ -43,14 +46,9 @@ jobs:
   # Build, Test & WASM
   # --------------------
   build:
-    name: Build & Test (${{ matrix.os }})
+    name: Build, Test & WASM
     needs: format
-    runs-on: ${{ matrix.os }}
-
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest]
+    runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
@@ -107,22 +105,34 @@ jobs:
         uses: jetli/wasm-pack-action@v0.4.0
 
       # --------------------
-      # Build WASM package (FIXED)
+      # Build WASM
       # --------------------
       - name: Build WASM (wasm-pack)
         env:
           GETRANDOM_BACKEND: js
         run: |
-          wasm-pack build \
-            --release \
-            --target web \
-            --out-dir pkg
+          wasm-pack build --release --target web --out-dir pkg
 
       # --------------------
-      # Upload WASM artifacts
+      # Upload WASM artifacts (CI)
       # --------------------
       - name: Upload WASM artifact
         uses: actions/upload-artifact@v4
         with:
-          name: mwc-wallet-wasm-${{ runner.os }}
+          name: mwc-wallet-wasm
           path: pkg/
+
+      # --------------------
+      # GitHub Release (tags only)
+      # --------------------
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            pkg/*.wasm
+            pkg/*.js
+            pkg/*.d.ts
+            pkg/package.json
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
